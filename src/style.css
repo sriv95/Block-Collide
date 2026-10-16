@@ -1,0 +1,16 @@
+@import "tailwindcss";
+
+:root { --bg: #e9eef4; }
+body { background: var(--bg); font-family: ui-rounded, "Trebuchet MS", system-ui, sans-serif; user-select: none; }
+/* 16:9-ish stage that fits the viewport; children size with cqw (1cqw = 10 logical px) */
+#game { width: min(100vw, 100vh * 1000 / 562); aspect-ratio: 1000 / 562; container-type: size; }
+#game section { font-size: 2.4cqw; }
+h1 { font-size: 9cqw; font-weight: 800; letter-spacing: -0.02em; }
+h2 { font-size: 4cqw; font-weight: 800; }
+.btn { border: 0.3cqw solid #000; background: #fff; padding: 0.8cqw 2.4cqw; font-size: 2.4cqw; cursor: pointer; }
+.btn:hover, .tile:enabled:hover { background: #000; color: #fff; }
+.tile { border: 0.3cqw solid #000; background: #fff; aspect-ratio: 1; font-size: 3cqw; font-weight: 700; cursor: pointer; }
+.tile:disabled { border-color: #9aa5b1; color: #9aa5b1; background: transparent; cursor: default; }
+.ico { position: absolute; bottom: 2cqw; width: 4.5cqw; height: 4.5cqw; cursor: pointer; }
+.ico svg { width: 100%; height: 100%; fill: none; stroke: #000; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.ico:hover svg { stroke: #666; }
