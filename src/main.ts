@@ -1,11 +1,10 @@
 import "./style.css";
 import { levels } from "./levels";
-import { H, HALF, W, click, done, hitters, layout, makeState, pos, step, won, type Block, type PathPt, type State } from "./sim";
+import { CELL, H, HALF, W, click, done, hitters, makeState, pos, step, won, type Block, type PathPt, type State } from "./sim";
 import { get, put } from "./store";
 
 const COLORS = ["#2fbf5b", "#3b82f6", "#f59e0b", "#a855f7", "#ec4899", "#facc15", "#ef4444", "#8b5e34"];
-const PAIRS = ["#0891b2", "#c2410c", "#65a30d", "#be123c"];
-const BG = "#e9eef4", LINE = 3;
+const BG = "#e9f1f4", LINE = 3;
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const cv = $<HTMLCanvasElement>("c");
 const ctx = cv.getContext("2d")!;
@@ -86,19 +85,17 @@ const onCrash = () => {
 };
 
 // ---- drawing ----
-const blockAt = (b: Block) => {
-  const { cs, ox, oy } = layout(levels[li]);
-  const [x, y] = pos(b);
-  return { cs, x: ox + (x + 0.5) * cs, y: oy + (y + 0.5) * cs };
-};
+const rad = (b: Block) => ((b.def.rot ?? 0) * Math.PI) / 180;
 
 const pick = (): Block | undefined =>
   st !== "play" || paused()
     ? undefined
     : [...sim.blocks].reverse().find((b) => {
         if (b.moving || done(b)) return false;
-        const { cs, x, y } = blockAt(b);
-        return Math.abs(mouse[0] - x) <= HALF * cs && Math.abs(mouse[1] - y) <= HALF * cs;
+        const [x, y] = pos(b), r = rad(b);
+        const dx = mouse[0] - x * CELL, dy = mouse[1] - y * CELL;
+        // mouse offset in the block's own (turned) frame
+        return Math.abs(dx * Math.cos(r) + dy * Math.sin(r)) <= HALF * CELL && Math.abs(dy * Math.cos(r) - dx * Math.sin(r)) <= HALF * CELL;
       });
 
 const arrow = (x: number, y: number, a: number, c: string) => {
@@ -113,34 +110,51 @@ const arrow = (x: number, y: number, a: number, c: string) => {
   ctx.restore();
 };
 
-/** Pair-group accent: a small diamond on the block's top-right corner. */
-const diamond = (x: number, y: number, r: number, c: string) => {
-  ctx.fillStyle = c;
-  ctx.strokeStyle = "#fff";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-};
-
-const padlock = (x: number, y: number, s: number, open: boolean, c: string) => {
+/** Padlock centred on x,y; `rot` turns it with the block squares of its path. */
+const padlock = (x: number, y: number, s: number, open: boolean, rot: number) => {
+  const c = open ? "#7b7f80" : "#000";
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+  ctx.fillStyle = BG;
+  ctx.fillRect(-s / 2, -s / 2, s, s); // cuts the path line behind the lock
   ctx.strokeStyle = c;
   ctx.fillStyle = c;
-  ctx.lineWidth = 4;
-  ctx.fillRect(x - s * 0.22, y - s * 0.02, s * 0.44, s * 0.3);
+  ctx.lineWidth = 3.5;
+  ctx.fillRect(-s * 0.24, -s * 0.02, s * 0.48, s * 0.34);
   ctx.beginPath();
-  ctx.arc(x, y - s * 0.02, s * 0.14, open ? Math.PI * 1.2 : Math.PI, 0);
+  ctx.arc(open ? s * 0.06 : 0, -s * 0.04, s * 0.16, open ? Math.PI * 1.15 : Math.PI, 0);
   ctx.stroke();
+  ctx.fillStyle = BG;
+  ctx.beginPath();
+  ctx.arc(0, s * 0.12, s * 0.045, 0, 7);
+  ctx.fillRect(-s * 0.02, s * 0.12, s * 0.04, s * 0.12);
+  ctx.fill();
+  ctx.restore();
 };
 
-const square = (x: number, y: number, s: number, fill: string, stroke: string) => {
+const square = (x: number, y: number, s: number, fill: string, stroke: string, rot = 0) => {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
   ctx.fillStyle = fill;
   ctx.strokeStyle = stroke;
   ctx.lineWidth = LINE;
-  ctx.fillRect(x - s / 2, y - s / 2, s, s);
-  ctx.strokeRect(x - s / 2, y - s / 2, s, s);
+  ctx.fillRect(-s / 2, -s / 2, s, s);
+  ctx.strokeRect(-s / 2, -s / 2, s, s);
+  ctx.restore();
+};
+
+/** Pause node: white diamond. */
+const node = (x: number, y: number) => {
+  ctx.fillStyle = "#fff";
+  ctx.strokeStyle = "#000";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x, y - 19); ctx.lineTo(x + 19, y); ctx.lineTo(x, y + 19); ctx.lineTo(x - 19, y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
 };
 
 const draw = () => {
@@ -149,9 +163,8 @@ const draw = () => {
   ctx.fillStyle = BG;
   ctx.fillRect(0, 0, W, H);
   if (!inLevel()) return;
-  const { cs, ox, oy } = layout(levels[li]);
-  const s = 2 * HALF * cs;
-  const P = ([x, y]: PathPt) => [ox + (x + 0.5) * cs, oy + (y + 0.5) * cs] as const;
+  const s = 2 * HALF * CELL;
+  const P = ([x, y]: PathPt) => [x * CELL, y * CELL] as const;
   const col = (i: number) => COLORS[i % COLORS.length];
 
   sim.blocks.forEach((b, i) => {
@@ -171,78 +184,64 @@ const draw = () => {
     for (; n < p.length; n++) ctx.lineTo(...P(p[n]));
     ctx.stroke();
   });
-  // pause nodes: clock-like disc with two bars
-  sim.blocks.forEach((b, i) =>
-    b.def.path.forEach((q, n) => {
-      if (!q[2] || n === b.def.path.length - 1) return;
-      const [x, y] = P(q);
-      ctx.fillStyle = "#fff";
-      ctx.strokeStyle = col(i);
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.arc(x, y, 13, 0, 7);
-      ctx.fill();
-      ctx.stroke();
-      ctx.fillStyle = "#000";
-      ctx.fillRect(x - 5, y - 6, 3.5, 12);
-      ctx.fillRect(x + 1.5, y - 6, 3.5, 12);
-    }),
-  );
-  sim.blocks.forEach((b, i) => {
+  // pause nodes still ahead of their block
+  sim.blocks.forEach((b) => {
+    let at = 0;
+    b.def.path.forEach((q, n, p) => {
+      if (n) at += Math.hypot(q[0] - p[n - 1][0], q[1] - p[n - 1][1]);
+      if (q[2] && n < p.length - 1 && at > b.dist + 1e-6) node(...P(q));
+    });
+  });
+  sim.blocks.forEach((b) => {
     const [x, y] = P(b.def.path.at(-1)!);
-    const pc = b.def.pair === undefined ? undefined : PAIRS[b.def.pair % PAIRS.length];
+    const r = rad(b);
     if (!done(b)) {
       ctx.setLineDash([6, 7]);
-      square(x, y, s, BG, "#000");
+      square(x, y, s, BG, "#000", r);
       ctx.setLineDash([]);
-      if (pc) diamond(x + s / 2, y - s / 2, 8, pc);
       return;
     }
-    square(x, y, s, "#fff", COLORS[0]);
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(r);
+    square(0, 0, s, "#fff", COLORS[0]);
     ctx.strokeStyle = COLORS[0];
     ctx.lineWidth = 6;
     ctx.beginPath();
-    ctx.moveTo(x - 11, y); ctx.lineTo(x - 3, y + 9); ctx.lineTo(x + 12, y - 9);
+    ctx.moveTo(-11, 0); ctx.lineTo(-3, 9); ctx.lineTo(12, -9);
     ctx.stroke();
+    ctx.restore();
   });
-  sim.locks.forEach((l) => {
-    const [x, y] = P(l.at);
-    if (l.open) {
-      ctx.setLineDash([3, 6]);
-      square(x, y, s, "rgba(0,0,0,0.04)", "rgba(0,0,0,0.35)");
-      ctx.setLineDash([]);
-      padlock(x, y, s, true, "rgba(0,0,0,0.3)");
-    } else {
-      square(x, y, s, "#1f2937", "#111827");
-      padlock(x, y, s, false, "#e5e7eb");
-    }
-  });
+  sim.locks.forEach((l) => padlock(...P(l.at), s, l.open, ((l.rot ?? 0) * Math.PI) / 180));
   const hov = pick();
   cv.style.cursor = hov ? "pointer" : "default";
   sim.blocks.forEach((b) => {
     if (done(b)) return;
     const pair = b.def.pair;
-    const pc = pair === undefined ? undefined : PAIRS[pair % PAIRS.length];
     const hot = hov && (b === hov || (pair !== undefined && hov.def.pair === pair));
-    const { x, y } = blockAt(b);
+    const [x, y] = P(pos(b));
     const [a, c] = b.def.path;
     const ang = Math.atan2(c[1] - a[1], c[0] - a[0]);
+    const r = rad(b);
     if (crashed.includes(b)) {
-      square(x, y, s, "#ef4444", "#7f1d1d");
-      ctx.strokeStyle = "#fff";
+      square(x, y, s, "#fff", "#dc2f2f", r);
+      ctx.strokeStyle = "#dc2f2f";
       ctx.lineWidth = 5;
       ctx.beginPath();
       ctx.arc(x, y, s * 0.3, 0, 7);
       ctx.moveTo(x - s * 0.21, y - s * 0.21); ctx.lineTo(x + s * 0.21, y + s * 0.21);
       ctx.stroke();
-    } else if (hot) {
-      square(x, y, s * 0.9, "#000", pc ?? "#000");
-      arrow(x, y, ang, "#fff");
-    } else {
-      square(x, y, s, "#fff", pc ?? "#000");
-      arrow(x, y, ang, "#000");
+      return;
     }
-    if (pc) diamond(x + s / 2, y - s / 2, 8, pc);
+    square(x, y, hot ? s * 0.9 : s, hot ? "#000" : "#fff", "#000", r);
+    if (pair === undefined) arrow(x, y, ang, hot ? "#fff" : "#000");
+    else {
+      ctx.fillStyle = hot ? "#fff" : "#000";
+      ctx.font = "600 40px ui-rounded, 'Trebuchet MS', sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(String.fromCharCode(65 + pair), x, y + 2);
+    }
   });
 };
 

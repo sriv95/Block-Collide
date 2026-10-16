@@ -1,36 +1,34 @@
 // E2E: bun scripts/play.ts [url]  (dev server must be running)
 import { chromium } from "playwright";
 import { levels } from "../src/levels";
-import { PAUSE_S, SPEED, W, H, click, layout, makeState, step, type Level } from "../src/sim";
+import { solutions } from "../src/solutions";
+import { CELL, W, H, click, makeState, pos, step, type Level } from "../src/sim";
 
 const URL = process.argv[2] ?? "http://localhost:5173/";
-const SHOTS = "/private/tmp/claude-501/-Users-sriv-Projects-Block-Collide/e7169ff5-035b-400b-a239-22d5c37cd5f4/scratchpad/";
+const SHOTS = "/private/tmp/claude-501/-Users-sriv-Projects-Block-Collide/9f25eb77-ba53-4ee3-b08e-73ce7ca48f33/scratchpad/shots/";
 
-// A move clicks one block or a whole pair group; the group's representative is its first member.
-const units = (lv: Level) => lv.blocks.flatMap((b, i) => (b.pair === undefined || lv.blocks.findIndex((c) => c.pair === b.pair) === i ? [i] : []));
-const members = (lv: Level, i: number) => lv.blocks.filter((b) => b === lv.blocks[i] || (b.pair !== undefined && b.pair === lv.blocks[i].pair));
-const works = (lv: Level, order: number[]) => {
+const DT = 1 / 120;
+/** Where each planned click lands (cells) and how long the plan takes to settle (seconds), by replaying the sim. */
+const replay = (lv: Level, plan: [number, number][]) => {
   const s = makeState(lv);
-  if (step(s, 0)) return false;
-  for (const i of order) {
-    click(s, s.blocks[i]);
-    while (s.blocks.some((b) => b.moving)) if (step(s, 1 / 60)) return false;
+  let t = 0;
+  const at: [number, number][] = [];
+  for (const [u, when] of plan) {
+    for (; t < when; t += DT) step(s, DT);
+    at.push(pos(s.blocks[u]));
+    click(s, s.blocks[u]);
   }
-  return true;
+  while (s.blocks.some((b) => b.moving)) { step(s, DT); t += DT; }
+  return { at, end: t };
 };
-/** First order (DFS, crash-pruned) that wins, or with `bad`, the first order that crashes. */
-const search = (lv: Level, bad = false, pre: number[] = []): number[] | undefined => {
-  const U = units(lv), left = U.filter((u) => !pre.includes(u));
-  if (!works(lv, pre)) return bad ? pre : undefined;
-  if (!left.length) return bad ? undefined : pre;
-  for (const u of left) { const r = search(lv, bad, [...pre, u]); if (r) return r; }
+/** First block whose click, run to completion on its own, crashes. */
+const crasher = (lv: Level) => {
+  for (let u = 0; u < lv.blocks.length; u++) {
+    const s = makeState(lv);
+    click(s, s.blocks[u]);
+    for (let t = 0; s.blocks.some((b) => b.moving) && t < 20; t += DT) if (step(s, DT)) return u;
+  }
 };
-const solution = (lv: Level) => search(lv)!;
-const wrong = (lv: Level) => search(lv, true)!;
-
-const pathLen = (p: number[][]) => p.slice(1).reduce((s, q, i) => s + Math.hypot(q[0] - p[i][0], q[1] - p[i][1]), 0);
-/** Seconds a move takes: slowest member, travel plus PAUSE_S per "p" point (not the last). */
-const moveS = (lv: Level, i: number) => Math.max(...members(lv, i).map((b) => pathLen(b.path) / SPEED + PAUSE_S * b.path.slice(0, -1).filter((q) => q[2]).length));
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const browser = await chromium.launch();
@@ -49,13 +47,11 @@ const text = (id: string) => page.locator("#" + id).innerText();
 const state = () => page.locator("#game").getAttribute("data-state");
 const inState = (want: string, timeout = 5000) =>
   page.waitForFunction((w) => document.getElementById("game")!.dataset.state === w, want, { timeout, polling: "raf" }).then(() => true, () => false);
-const blockXY = async (lv: Level, i: number) => {
+const cellXY = async ([x, y]: [number, number]) => {
   const r = (await page.locator("#c").boundingBox())!;
-  const { cs, ox, oy } = layout(lv);
-  const [x, y] = lv.blocks[i].path[0];
-  return [r.x + ((ox + (x + 0.5) * cs) / W) * r.width, r.y + ((oy + (y + 0.5) * cs) / H) * r.height] as const;
+  return [r.x + ((x * CELL) / W) * r.width, r.y + ((y * CELL) / H) * r.height] as const;
 };
-const clickBlock = async (lv: Level, i: number) => page.mouse.click(...(await blockXY(lv, i)));
+const clickAt = async (c: [number, number]) => page.mouse.click(...(await cellXY(c)));
 const label = (n: number) => page.waitForFunction((t) => document.getElementById("lvl")!.textContent === t, `LEVEL ${n}`, { timeout: 4000 }).then(() => true, () => false);
 
 check("title shown", (await state()) === "title");
@@ -75,25 +71,26 @@ await page.keyboard.press("Escape");
 check("Esc closes settings", !(await page.locator("#settings").isVisible()));
 
 // hover shot
-await page.mouse.move(...(await blockXY(levels[0], 0)));
+const first = replay(levels[0], solutions[0]);
+await page.mouse.move(...(await cellXY(first.at[0])));
 await sleep(100);
 await page.screenshot({ path: SHOTS + "hover.png" });
 
 // R restarts: click block, press R mid-move; must not win on original schedule
-await clickBlock(levels[0], 0);
+await clickAt(first.at[0]);
 await sleep(400);
 await page.keyboard.press("r");
-await sleep(moveS(levels[0], 0) * 1000 + 300);
+await sleep(first.end * 1000 + 300);
 check("R restarts level", (await state()) === "play" && (await text("lvl")) === "LEVEL 1", await state());
 
 for (let li = 0; li < levels.length; li++) {
-  const lv = levels[li];
+  const lv = levels[li], plan = solutions[li];
   check(`level label ${li + 1}`, await label(li + 1));
   await inState("play");
 
   if (li === 4) {
-    const w = wrong(lv)!;
-    await clickBlock(lv, w[0]);
+    const w = crasher(lv)!;
+    await clickAt(lv.blocks[w].path[0] as [number, number]);
     const crashed = await inState("crash", 3000);
     await sleep(150);
     await page.screenshot({ path: SHOTS + "crash.png" });
@@ -101,15 +98,16 @@ for (let li = 0; li < levels.length; li++) {
     check("L5 resets after crash", (await inState("play", 4000)) && (await text("lvl")) === "LEVEL 5");
   }
 
-  const order = solution(lv);
-  for (const [k, i] of order.entries()) {
-    await clickBlock(lv, i);
-    if ([4, 19, 27, 33, 39].includes(li) && k === order.length - 1) { await sleep(300); await page.screenshot({ path: SHOTS + `level${li + 1}-mid.png` }); }
-    if (k < order.length - 1) await sleep(moveS(lv, i) * 1000 + 150);
+  const { at, end } = replay(lv, plan);
+  const t0 = Date.now();
+  for (const [k, [, when]] of plan.entries()) {
+    await sleep(Math.max(0, t0 + when * 1000 - Date.now()));
+    await clickAt(at[k]);
+    if (k === plan.length - 1 && [4, 19, 27, 33, 39].includes(li)) { await sleep(300); await page.screenshot({ path: SHOTS + `level${li + 1}-mid.png` }); }
   }
-  const solved = await inState("win", moveS(lv, order.at(-1)!) * 1000 + 2000);
+  const solved = await inState("win", Math.max(0, t0 + end * 1000 - Date.now()) + 3000);
   if (!solved) await page.screenshot({ path: SHOTS + `fail${li + 1}.png` });
-  check(`level ${li + 1} solved`, solved, `order ${order.join(",")}`);
+  check(`level ${li + 1} solved`, solved);
 }
 check("after last level -> level select", await inState("select", 4000));
 check("all levels now unlocked", (await page.locator("#tiles button:enabled").count()) === levels.length);

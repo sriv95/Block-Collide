@@ -1,28 +1,21 @@
 export type Pt = [number, number];
-/** Path point; a third element "p" makes a moving block stop there for PAUSE_S. */
+/** Path point; a third element "p" makes a moving block stop there until it is clicked again. */
 export type PathPt = Pt | [number, number, "p"];
-/** `pair`: blocks sharing a group id all start when any one is clicked. */
-export type BlockDef = { path: PathPt[]; color?: string; pair?: number };
-/** A gate on a cell centre. Toggles open<->closed whenever any block finishes its move. */
-export type LockDef = { at: Pt; open: boolean };
-/** Grid units. Level `size` = [cols, rows]. Path points are cell centres. */
-export type Level = { size: Pt; blocks: BlockDef[]; locks?: LockDef[] };
+/** `pair`: blocks sharing a group id all start when any one is clicked. `rot`: degrees the block square is turned. */
+export type BlockDef = { path: PathPt[]; color?: string; pair?: number; rot?: number };
+/** A gate on a cell centre. Toggles open<->closed every time a block is clicked to move. */
+export type LockDef = { at: Pt; open: boolean; rot?: number };
+/** Path points and locks are in cells from the stage's top-left corner (1 cell = 100 logical px). */
+export type Level = { blocks: BlockDef[]; locks?: LockDef[] };
 
-/** Logical canvas. Real game: 56px block, 500px/s on a 1000x562 canvas with 100px cells. */
+/** Logical canvas. Real game: 56px block, 500px/s on a 1000x562 stage. */
 export const W = 1000, H = 562;
-/** Vertical margin reserved for the LEVEL tab. */
-const TOP = 40;
+export const CELL = 100; // logical px per cell
 export const SPEED = 5; // cells per second
-export const HALF = 0.28; // block half-width in cells
-export const PAUSE_S = 1; // stop time at a pause node
+export const HALF = 0.28; // block half-width in cells (drawn)
+export const HIT = 0.25; // collision half-width: a little smaller than drawn, so near misses pass
 
-/** Cell size and grid origin that centre a level in the canvas. */
-export const layout = (lv: Level) => {
-  const cs = Math.min(100, W / lv.size[0], (H - 2 * TOP) / lv.size[1]);
-  return { cs, ox: (W - lv.size[0] * cs) / 2, oy: (H - lv.size[1] * cs) / 2 };
-};
-
-export type Block = { def: BlockDef; len: number; dist: number; moving: boolean; stops: number[]; wait: number };
+export type Block = { def: BlockDef; len: number; dist: number; moving: boolean; stops: number[] };
 export type State = { blocks: Block[]; locks: LockDef[] };
 
 const segLen = (a: Pt, b: Pt) => Math.hypot(b[0] - a[0], b[1] - a[1]);
@@ -36,7 +29,7 @@ export const makeState = (lv: Level): State => ({
       len += segLen(p[i - 1] as Pt, p[i] as Pt);
       if (p[i][2] && i < p.length - 1) stops.push(len); // a pause on the final point is ignored
     }
-    return { def, len, dist: 0, moving: false, stops, wait: 0 };
+    return { def, len, dist: 0, moving: false, stops };
   }),
   locks: (lv.locks ?? []).map((l) => ({ ...l })),
 });
@@ -57,41 +50,39 @@ export const pos = (b: Block): Pt => {
 
 export const done = (b: Block) => b.dist >= b.len;
 
-const near = (p: Pt, q: Pt) => Math.abs(p[0] - q[0]) < 2 * HALF && Math.abs(p[1] - q[1]) < 2 * HALF;
+/** Separating-axis test for two turned squares of half-width `h` (degrees). */
+export const overlap = (p: Pt, r: number, q: Pt, t: number, h = HIT) => {
+  const dx = q[0] - p[0], dy = q[1] - p[1], k = Math.PI / 180;
+  return [r, r + 90, t, t + 90].every((a) => {
+    const c = Math.cos(a * k), s = Math.sin(a * k);
+    const ext = (m: number) => h * (Math.abs(Math.cos((m - a) * k)) + Math.abs(Math.sin((m - a) * k)));
+    return Math.abs(dx * c + dy * s) < ext(r) + ext(t) - 1e-9;
+  });
+};
+const rot = (b: Block) => b.def.rot ?? 0;
 /** Blocks overlapping another block or a closed lock. */
 export const hitters = ({ blocks, locks }: State) =>
-  blocks.filter((b) => blocks.some((c) => c !== b && near(pos(b), pos(c))) || locks.some((l) => !l.open && near(pos(b), l.at)));
+  blocks.filter((b) => blocks.some((c) => c !== b && overlap(pos(b), rot(b), pos(c), rot(c))) || locks.some((l) => !l.open && overlap(pos(b), rot(b), l.at, l.rot ?? 0)));
 
 /** Advance moving blocks by dt seconds. Returns true if anything overlaps. */
 export const step = (s: State, dt: number): boolean => {
   for (const b of s.blocks) {
-    let t = dt;
-    while (t > 0 && b.moving) {
-      if (b.wait > 0) {
-        const w = Math.min(b.wait, t);
-        b.wait -= w;
-        t -= w;
-        continue;
-      }
-      const next = b.stops[0] ?? b.len;
-      const reach = b.dist + SPEED * t;
-      if (reach < next) { b.dist = reach; break; }
-      t -= (next - b.dist) / SPEED;
-      b.dist = next;
-      if (b.stops.length) { b.stops.shift(); b.wait = PAUSE_S; }
-      else {
-        b.moving = false;
-        for (const l of s.locks) l.open = !l.open;
-      }
-    }
+    if (!b.moving) continue;
+    const next = b.stops[0] ?? b.len;
+    b.dist = Math.min(next, b.dist + SPEED * dt);
+    if (b.dist < next) continue;
+    b.moving = false;
+    b.stops.shift();
   }
   return hitters(s).length > 0;
 };
 
-/** Start the block, or its whole pair group, if unfinished. */
+/** Start the block, or its whole pair group, if unfinished. Every start flips all locks. */
 export const click = (s: State, b: Block) => {
+  let started = false;
   for (const c of s.blocks)
-    if ((c === b || (b.def.pair !== undefined && c.def.pair === b.def.pair)) && !c.moving && !done(c)) c.moving = true;
+    if ((c === b || (b.def.pair !== undefined && c.def.pair === b.def.pair)) && !c.moving && !done(c)) c.moving = started = true;
+  if (started) for (const l of s.locks) l.open = !l.open;
 };
 
 export const won = (s: State) => s.blocks.every(done);
