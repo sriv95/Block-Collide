@@ -1,6 +1,6 @@
 import "./style.css";
 import { levels } from "./levels";
-import { CELL, H, HALF, W, click, done, hitters, makeState, pos, step, won, type Block, type PathPt, type State } from "./sim";
+import { CELL, H, HALF, W, click, done, heading, hitters, makeState, pos, step, won, type Block, type PathPt, type State } from "./sim";
 import { get, put } from "./store";
 
 const COLORS = ["#2fbf5b", "#3b82f6", "#f59e0b", "#a855f7", "#ec4899", "#facc15", "#ef4444", "#8b5e34"];
@@ -220,8 +220,7 @@ const draw = () => {
     const pair = b.def.pair;
     const hot = hov && (b === hov || (pair !== undefined && hov.def.pair === pair));
     const [x, y] = P(pos(b));
-    const [a, c] = b.def.path;
-    const ang = Math.atan2(c[1] - a[1], c[0] - a[0]);
+    const ang = heading(b);
     const r = rad(b);
     if (crashed.includes(b)) {
       square(x, y, s, "#fff", "#dc2f2f", r);

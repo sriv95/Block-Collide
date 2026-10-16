@@ -48,6 +48,18 @@ export const pos = (b: Block): Pt => {
   return p[p.length - 1].slice(0, 2) as Pt;
 };
 
+/** Direction (radians) of the path segment the block is on; at a corner, the segment it will take next. */
+export const heading = (b: Block): number => {
+  let d = b.dist;
+  const p = b.def.path;
+  for (let i = 1; i < p.length; i++) {
+    const l = segLen(p[i - 1] as Pt, p[i] as Pt);
+    if (d < l || i === p.length - 1) return Math.atan2(p[i][1] - p[i - 1][1], p[i][0] - p[i - 1][0]);
+    d -= l;
+  }
+  return 0;
+};
+
 export const done = (b: Block) => b.dist >= b.len;
 
 /** Separating-axis test for two turned squares of half-width `h` (degrees). */

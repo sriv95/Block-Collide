@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { levels } from "./levels";
 import { solutions } from "./solutions";
-import { H, W, CELL, click, done, makeState, overlap, pos, step, won, type Level } from "./sim";
+import { H, W, CELL, click, done, heading, makeState, overlap, pos, step, won, type Level } from "./sim";
 
 const DT = 1 / 120;
 /** Replay a click plan; returns whether any click was ignored, whether blocks crashed, and whether the level was won. */
@@ -113,4 +113,13 @@ test("turned squares collide by their turned edges", () => {
   expect(overlap([0, 0], 0, [0.58, 0], 45)).toBe(true);
   expect(overlap([0, 0], 0, [0.49, 0], 0)).toBe(true);
   expect(overlap([0, 0], 0, [0.51, 0], 0)).toBe(false);
+});
+
+test("arrow heading follows the current segment", () => {
+  const s = makeState(line({}, { path: [[1, 1], [3, 1, "p"], [3, 3]] }));
+  const b = s.blocks[0];
+  expect(heading(b)).toBe(0);
+  click(s, b);
+  run(s);
+  expect(heading(b)).toBeCloseTo(Math.PI / 2); // paused at the corner: faces next segment
 });
