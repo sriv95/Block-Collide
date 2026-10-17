@@ -261,8 +261,7 @@ const tick = (now: number) => {
 
 // ---- input ----
 const track = (e: PointerEvent) => {
-  const r = cv.getBoundingClientRect();
-  mouse = [((e.clientX - r.left) / r.width) * W, ((e.clientY - r.top) / r.height) * H];
+  mouse = [(e.offsetX / cv.offsetWidth) * W, (e.offsetY / cv.offsetHeight) * H];
 };
 cv.addEventListener("pointermove", track);
 cv.addEventListener("pointerleave", () => (mouse = [-1e4, -1e4]));
@@ -290,9 +289,9 @@ addEventListener("keydown", (e: KeyboardEvent) => {
 });
 
 const fit = () => {
-  const r = game.getBoundingClientRect(), d = devicePixelRatio || 1;
-  cv.width = Math.round(r.width * d);
-  cv.height = Math.round(r.height * d);
+  const d = devicePixelRatio || 1; // offset sizes, not the bounding box: the stage may be turned 90deg
+  cv.width = Math.round(game.offsetWidth * d);
+  cv.height = Math.round(game.offsetHeight * d);
 };
 addEventListener("resize", fit);
 

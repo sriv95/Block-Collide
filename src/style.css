@@ -4,6 +4,11 @@
 body { background: var(--bg); font-family: ui-rounded, "Trebuchet MS", system-ui, sans-serif; user-select: none; }
 /* 16:9-ish stage that fits the viewport; children size with cqw (1cqw = 10 logical px) */
 #game { width: min(100vw, 100vh * 1000 / 562); aspect-ratio: 1000 / 562; container-type: size; }
+/* portrait: turn the stage 90deg so it fills the tall screen; pointer maths uses offsetX/Y, which ignore the turn */
+@media (orientation: portrait) {
+  #game { position: fixed; left: 50%; top: 50%; width: min(100dvh, 100vw * 1000 / 562); transform: translate(-50%, -50%) rotate(90deg); }
+}
+#c { touch-action: none; }
 #game section { font-size: 2.4cqw; }
 h1 { font-size: 9cqw; font-weight: 800; letter-spacing: -0.02em; }
 h2 { font-size: 4cqw; font-weight: 800; }
