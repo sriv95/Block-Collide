@@ -10,7 +10,7 @@ const cv = $<HTMLCanvasElement>("c");
 const ctx = cv.getContext("2d")!;
 const game = $("game"), fadeEl = $("fade"), settings = $("settings");
 
-type St = "title" | "select" | "play" | "crash" | "win" | "fade";
+type St = "title" | "select" | "end" | "play" | "crash" | "win" | "fade";
 let st: St = "title";
 let li = 0;
 let sim: State = { blocks: [], locks: [] };
@@ -21,13 +21,14 @@ let last = performance.now();
 let mouse: [number, number] = [-1e4, -1e4];
 let unlocked = Math.min(levels.length, Math.max(1, Number(get("bc-unlocked")) || 1));
 
-const inLevel = () => st !== "title" && st !== "select";
+const inLevel = () => st !== "title" && st !== "select" && st !== "end";
 const paused = () => !settings.hidden;
 const set = (s: St) => {
   st = s;
   game.dataset.state = s;
   $("title").hidden = s !== "title";
   $("select").hidden = s !== "select";
+  $("end").hidden = s !== "end";
   $("lvl").hidden = $("restart").hidden = !inLevel();
 };
 
@@ -68,6 +69,12 @@ const select = () => {
   set("select");
 };
 
+/** Every level cleared: show the congratulations screen (the count follows `levels`, so new levels need no change here). */
+const finish = () => {
+  $("done").textContent = `you cleared all ${levels.length} levels`;
+  set("end");
+};
+
 const restart = () => {
   if (st !== "play") return;
   set("fade");
@@ -77,7 +84,7 @@ const restart = () => {
 const onWin = () => {
   set("win");
   if (li + 1 >= unlocked && li + 1 < levels.length) put("bc-unlocked", String((unlocked = li + 2)));
-  fade(1000, () => (li + 1 < levels.length ? load(li + 1) : select()));
+  fade(1000, () => (li + 1 < levels.length ? load(li + 1) : finish()));
 };
 
 const onCrash = () => {
@@ -294,6 +301,7 @@ const toggleSettings = (open = settings.hidden) => {
 };
 
 $("start").onclick = select;
+$("back").onclick = select;
 $("gear").onclick = () => toggleSettings();
 $("resume").onclick = () => toggleSettings(false);
 $("sr").onclick = () => { toggleSettings(false); restart(); };
