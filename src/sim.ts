@@ -1,6 +1,6 @@
 export type Pt = [number, number];
-/** Path point; a third element "p" makes a moving block stop there until it is clicked again. */
-export type PathPt = Pt | [number, number, "p"];
+/** Path point; a third element "p" makes a moving block stop there until it is clicked again. "j" makes the block jump to the point from the one before it (a portal pair). */
+export type PathPt = Pt | [number, number, "p" | "j"];
 /** `pair`: blocks sharing a group id all start when any one is clicked. `rot`: degrees the block square is turned. */
 export type BlockDef = { path: PathPt[]; color?: string; pair?: number; rot?: number };
 /** A gate on a block's path. Toggles open<->closed every time a block is clicked to move, and is gone once its block has passed it. */
@@ -23,7 +23,7 @@ export const HIT_LOCK = 0.22; // locks: smaller, so a block may graze one
 export type Block = { def: BlockDef; len: number; dist: number; moving: boolean; stops: number[] };
 export type State = { blocks: Block[]; locks: LockState[] };
 
-const segLen = (a: Pt, b: Pt) => Math.hypot(b[0] - a[0], b[1] - a[1]);
+export const segLen = (a: PathPt, b: PathPt) => (b[2] === "j" ? 0 : Math.hypot(b[0] - a[0], b[1] - a[1]));
 
 /** Which block's path a point lies on, and how far along it. */
 const onPath = (blocks: Block[], at: Pt) => {
@@ -49,7 +49,7 @@ export const makeState = (lv: Level): State => {
     const stops: number[] = [];
     for (let i = 1; i < p.length; i++) {
       len += segLen(p[i - 1] as Pt, p[i] as Pt);
-      if (p[i][2] && i < p.length - 1) stops.push(len); // a pause on the final point is ignored
+      if (p[i][2] === "p" && i < p.length - 1) stops.push(len); // a pause on the final point is ignored
     }
     return { def, len, dist: 0, moving: false, stops };
   });

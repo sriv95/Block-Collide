@@ -1,6 +1,6 @@
 import "./style.css";
 import { levels } from "./levels";
-import { CELL, H, HALF, W, click, done, heading, hitters, makeState, pos, step, won, type Block, type PathPt, type State } from "./sim";
+import { CELL, H, HALF, W, click, done, heading, hitters, makeState, pos, segLen, step, won, type Block, type PathPt, type State } from "./sim";
 import { get, put } from "./store";
 
 const COLORS = ["#2fbf5b", "#3b82f6", "#f59e0b", "#a855f7", "#ec4899", "#facc15", "#ef4444", "#8b5e34"];
@@ -159,6 +159,21 @@ const node = (x: number, y: number) => {
   ctx.stroke();
 };
 
+/** Portal: two rings in the colour of the block path it belongs to. */
+const portal = (x: number, y: number, c: string) => {
+  ctx.fillStyle = BG;
+  ctx.strokeStyle = c;
+  ctx.beginPath();
+  ctx.arc(x, y, 36, 0, 7);
+  ctx.fill();
+  ctx.lineWidth = 6;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(x, y, 21, 0, 7);
+  ctx.lineWidth = 4;
+  ctx.stroke();
+};
+
 const draw = () => {
   const k = cv.width / W;
   ctx.setTransform(k, 0, 0, k, 0, 0);
@@ -178,20 +193,21 @@ const draw = () => {
     // original erases the path behind the block: draw only what is left ahead of it
     let d = b.dist;
     let n = 1;
-    while (n < p.length - 1 && d >= Math.hypot(p[n][0] - p[n - 1][0], p[n][1] - p[n - 1][1])) {
-      d -= Math.hypot(p[n][0] - p[n - 1][0], p[n][1] - p[n - 1][1]);
+    while (n < p.length - 1 && d >= segLen(p[n - 1], p[n])) {
+      d -= segLen(p[n - 1], p[n]);
       n++;
     }
     ctx.moveTo(...P(pos(b)));
-    for (; n < p.length; n++) ctx.lineTo(...P(p[n]));
+    for (; n < p.length; n++) ctx[p[n][2] === "j" ? "moveTo" : "lineTo"](...P(p[n]));
     ctx.stroke();
   });
-  // pause nodes still ahead of their block
-  sim.blocks.forEach((b) => {
+  // pause nodes and portals still ahead of their block
+  sim.blocks.forEach((b, i) => {
     let at = 0;
     b.def.path.forEach((q, n, p) => {
-      if (n) at += Math.hypot(q[0] - p[n - 1][0], q[1] - p[n - 1][1]);
-      if (q[2] && n < p.length - 1 && at > b.dist + 1e-6) node(...P(q));
+      if (n) at += segLen(p[n - 1], q);
+      if (q[2] === "p" && n < p.length - 1 && at > b.dist + 1e-6) node(...P(q));
+      if (q[2] === "j" && at >= b.dist) { portal(...P(p[n - 1]), col(i)); portal(...P(q), col(i)); }
     });
   });
   sim.blocks.forEach((b) => {

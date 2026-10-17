@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { levels } from "./levels";
 import { solutions } from "./solutions";
-import { H, W, CELL, click, done, heading, makeState, overlap, pos, step, won, type Level } from "./sim";
+import { H, W, CELL, click, done, heading, makeState, overlap, pos, step, won, type Level, type PathPt } from "./sim";
 
 const DT = 1 / 120;
 /** Replay a click plan; returns whether any click was ignored, whether blocks crashed, and whether the level was won. */
@@ -20,9 +20,9 @@ const play = (lv: Level, plan: [number, number][]) => {
   return { ignored, crashed, won: won(s) };
 };
 
-test("exactly 40 levels, each with a plan", () => {
-  expect(levels.length).toBe(40);
-  expect(solutions.length).toBe(40);
+test("exactly 50 levels, each with a plan", () => {
+  expect(levels.length).toBe(50);
+  expect(solutions.length).toBe(50);
 });
 
 test("level shapes are valid", () => {
@@ -53,15 +53,33 @@ test("clicking every block at once crashes in most levels", () => {
 });
 
 const has = {
-  pause: (lv: Level) => lv.blocks.some((b) => b.path.some((p) => p[2])),
+  pause: (lv: Level) => lv.blocks.some((b) => b.path.some((p) => p[2] === "p")),
   pair: (lv: Level) => lv.blocks.some((b) => b.pair !== undefined),
   lock: (lv: Level) => !!lv.locks?.length,
   turned: (lv: Level) => lv.blocks.some((b) => b.rot),
+  portal: (lv: Level) => lv.blocks.some((b) => b.path.some((p) => p[2] === "j")),
 };
 
 test("each mechanic appears in several levels, later than the basics", () => {
   for (const [k, f] of Object.entries(has)) expect(levels.filter(f).length, k).toBeGreaterThanOrEqual(3);
   expect(levels.slice(0, 9).some((lv) => has.pause(lv) || has.pair(lv) || has.lock(lv) || has.turned(lv))).toBe(false);
+});
+
+test("portals: 41-45 use nothing else, 46-50 mix them with another mechanic, none before 41", () => {
+  const other = (lv: Level) => has.pause(lv) || has.pair(lv) || has.lock(lv) || has.turned(lv);
+  expect(levels.slice(0, 40).some(has.portal)).toBe(false);
+  levels.slice(40, 45).forEach((lv, n) => expect(has.portal(lv) && !other(lv), `level ${41 + n}`).toBe(true));
+  levels.slice(45).forEach((lv, n) => expect(has.portal(lv) && other(lv), `level ${46 + n}`).toBe(true));
+});
+
+test("every portal is needed: the level cannot be won with the jump drawn as a plain path", () => {
+  levels.slice(40).forEach((lv, n) => {
+    lv.blocks.forEach((b, i) => {
+      if (!b.path.some((p) => p[2] === "j")) return;
+      const walk: Level = { ...lv, blocks: lv.blocks.map((c, k) => (k === i ? { ...c, path: c.path.map((p) => [p[0], p[1]] as PathPt) } : c)) };
+      expect(play(walk, solutions[40 + n]).won, `level ${41 + n} block ${i}`).toBe(false);
+    });
+  });
 });
 
 const line = (extra: Partial<Level> = {}, ...blocks: Level["blocks"]): Level => ({ blocks, ...extra });
@@ -150,6 +168,28 @@ test("a closed lock is a smaller target than a block", () => {
   let crashed = false;
   while (!crashed && s.blocks[0].moving) crashed = step(s, DT);
   expect(crashed).toBe(false); // passes 0.55 cells away: a block would hit (< 0.604), a lock only inside 0.522
+});
+
+test("a portal moves the block at once and costs no travel time", () => {
+  const s = makeState(line({}, { path: [[1, 1], [3, 1], [3, 4, "j"], [3, 5]] }));
+  const b = s.blocks[0];
+  expect(b.len).toBe(3); // 2 + 0 + 1
+  click(s, b);
+  while (pos(b)[1] === 1 && b.moving) step(s, DT);
+  expect(pos(b)[1]).toBeCloseTo(4, 1);
+  expect(heading(b)).toBeCloseTo(Math.PI / 2); // faces the segment after the portal
+  run(s);
+  expect(pos(b)).toEqual([3, 5]);
+});
+
+test("a block entering a portal does not hit what sits between the portals", () => {
+  const lv = line({}, { path: [[1, 2], [3, 2], [7, 2, "j"], [8, 2]] }, { path: [[5, 1], [5, 2]] });
+  const s = makeState(lv);
+  click(s, s.blocks[0]);
+  let crashed = false;
+  while (!crashed && s.blocks[0].moving) crashed = step(s, DT);
+  expect(crashed).toBe(false);
+  expect(done(s.blocks[0])).toBe(true);
 });
 
 test("arrow heading follows the current segment", () => {
