@@ -114,8 +114,9 @@ export const step = (s: State, dt: number): boolean => {
   return hitters(s).length > 0;
 };
 
-/** Start the block, or its whole pair group, if unfinished. Every start flips all locks. */
+/** Start the block, or its whole pair group, if unfinished. Every start flips all locks. Ignored while any block is moving (as in the original). */
 export const click = (s: State, b: Block) => {
+  if (s.blocks.some((c) => c.moving)) return;
   let started = false;
   for (const c of s.blocks)
     if ((c === b || (b.def.pair !== undefined && c.def.pair === b.def.pair)) && !c.moving && !done(c)) c.moving = started = true;

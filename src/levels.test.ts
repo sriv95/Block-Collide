@@ -82,6 +82,17 @@ test("pause node stops the block until it is clicked again", () => {
   expect(done(s.blocks[0])).toBe(true);
 });
 
+test("a click is ignored while any block is moving", () => {
+  const s = makeState(line({ locks: [{ at: [4, 2], open: true }] }, { path: [[1, 1], [6, 1]] }, { path: [[1, 3], [6, 3]] }));
+  click(s, s.blocks[0]);
+  click(s, s.blocks[1]);
+  expect(s.blocks.map((b) => b.moving)).toEqual([true, false]);
+  expect(s.locks[0].open).toBe(false); // flipped once only
+  run(s);
+  click(s, s.blocks[1]);
+  expect(s.blocks[1].moving).toBe(true);
+});
+
 test("clicking one of a pair starts both", () => {
   const s = makeState(line({}, { path: [[1, 1], [6, 1]], pair: 1 }, { path: [[1, 3], [6, 3]], pair: 1 }, { path: [[1, 2], [2, 2]] }));
   click(s, s.blocks[1]);
@@ -93,6 +104,7 @@ test("every click flips all locks; a closed lock crashes a block that reaches it
   const s = makeState(lv);
   click(s, s.blocks[0]);
   expect(s.locks[0].open).toBe(false);
+  run(s);
   click(s, s.blocks[1]);
   expect(s.locks[0].open).toBe(true);
   const t = makeState(lv);
@@ -112,6 +124,7 @@ test("a lock vanishes once its own block has passed it", () => {
   const s = makeState(line({ locks: [{ at: [3, 1], open: true }] }, { path: [[1, 1], [6, 1]] }, { path: [[1, 3], [6, 3]] }));
   expect(s.locks[0].owner).toBe(0);
   click(s, s.blocks[1]); // flips the lock closed
+  run(s);
   click(s, s.blocks[0]); // flips it open again: block 0 may pass
   expect(s.locks.length).toBe(1);
   let crashed = false;
