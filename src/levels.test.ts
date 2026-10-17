@@ -108,11 +108,35 @@ test("every click flips all locks; a closed lock crashes a block that reaches it
   expect(pos(t.blocks[1])[0]).toBeLessThan(4);
 });
 
+test("a lock vanishes once its own block has passed it", () => {
+  const s = makeState(line({ locks: [{ at: [3, 1], open: true }] }, { path: [[1, 1], [6, 1]] }, { path: [[1, 3], [6, 3]] }));
+  expect(s.locks[0].owner).toBe(0);
+  click(s, s.blocks[1]); // flips the lock closed
+  click(s, s.blocks[0]); // flips it open again: block 0 may pass
+  expect(s.locks.length).toBe(1);
+  let crashed = false;
+  while (!crashed && s.blocks[0].moving) crashed = step(s, DT);
+  expect(crashed).toBe(false);
+  expect(s.locks.length).toBe(0);
+});
+
 test("turned squares collide by their turned edges", () => {
-  expect(overlap([0, 0], 0, [0.65, 0], 45)).toBe(false);
-  expect(overlap([0, 0], 0, [0.58, 0], 45)).toBe(true);
-  expect(overlap([0, 0], 0, [0.49, 0], 0)).toBe(true);
-  expect(overlap([0, 0], 0, [0.51, 0], 0)).toBe(false);
+  expect(overlap([0, 0], 0, [0.72, 0], 45)).toBe(false); // 0.302 + 0.281 * sqrt(2) = 0.699
+  expect(overlap([0, 0], 0, [0.68, 0], 45)).toBe(true);
+  expect(overlap([0, 0], 0, [0.6, 0], 0)).toBe(true); // straight boxes: 2 * 0.302
+  expect(overlap([0, 0], 0, [0.61, 0], 0)).toBe(false);
+  expect(overlap([0, 0], 45, [0.38, 0.38], 45)).toBe(true); // turned pair along a turned edge: 2 * 0.281 = 0.562
+  expect(overlap([0, 0], 45, [0.4, 0.4], 45)).toBe(false);
+});
+
+test("a closed lock is a smaller target than a block", () => {
+  const lv = line({ locks: [{ at: [4, 2], open: false }] }, { path: [[1, 2.55], [7, 2.55]] });
+  const s = makeState(lv);
+  click(s, s.blocks[0]); // flips the lock open
+  s.locks[0].open = false;
+  let crashed = false;
+  while (!crashed && s.blocks[0].moving) crashed = step(s, DT);
+  expect(crashed).toBe(false); // passes 0.55 cells away: a block would hit (< 0.604), a lock only inside 0.522
 });
 
 test("arrow heading follows the current segment", () => {

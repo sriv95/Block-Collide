@@ -16,6 +16,7 @@ let li = 0;
 let sim: State = { blocks: [], locks: [] };
 let crashed: Block[] = [];
 let timer = 0;
+let clock = 0; // seconds of simulated play in this level; exposed as data-t so scripts can click on game time
 let last = performance.now();
 let mouse: [number, number] = [-1e4, -1e4];
 let unlocked = Math.min(levels.length, Math.max(1, Number(get("bc-unlocked")) || 1));
@@ -45,6 +46,7 @@ const load = (i: number) => {
   li = i;
   sim = makeState(levels[i]);
   crashed = [];
+  clock = 0;
   $("lvl").textContent = `LEVEL ${i + 1}`;
   set("play");
 };
@@ -248,6 +250,8 @@ const tick = (now: number) => {
   const dt = Math.min((now - last) / 1000, 0.05);
   last = now;
   if (st === "play" && !paused()) {
+    clock += dt;
+    game.dataset.t = clock.toFixed(3);
     if (step(sim, dt)) onCrash();
     else if (won(sim)) onWin();
   }

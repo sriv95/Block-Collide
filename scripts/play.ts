@@ -99,13 +99,16 @@ for (let li = 0; li < levels.length; li++) {
   }
 
   const { at, end } = replay(lv, plan);
-  const t0 = Date.now();
+  // click on game time (data-t), not wall time, so a slow frame cannot shift the plan
+  const gameT = () => page.locator("#game").getAttribute("data-t").then(Number);
+  let t0 = 0;
   for (const [k, [, when]] of plan.entries()) {
-    await sleep(Math.max(0, t0 + when * 1000 - Date.now()));
+    if (k) await page.waitForFunction((t) => +document.getElementById("game")!.dataset.t! >= t, t0 + when, { polling: "raf", timeout: 20000 });
+    else t0 = await gameT();
     await clickAt(at[k]);
     if (k === plan.length - 1 && [4, 19, 27, 33, 39].includes(li)) { await sleep(300); await page.screenshot({ path: SHOTS + `level${li + 1}-mid.png` }); }
   }
-  const solved = await inState("win", Math.max(0, t0 + end * 1000 - Date.now()) + 3000);
+  const solved = await inState("win", end * 1000 + 6000);
   if (!solved) await page.screenshot({ path: SHOTS + `fail${li + 1}.png` });
   check(`level ${li + 1} solved`, solved);
 }
