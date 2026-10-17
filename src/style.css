@@ -19,3 +19,6 @@ h2 { font-size: 4cqw; font-weight: 800; }
 .ico { position: absolute; bottom: 2cqw; width: 4.5cqw; height: 4.5cqw; cursor: pointer; }
 .ico svg { width: 100%; height: 100%; fill: none; stroke: #000; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .ico:hover svg { stroke: #666; }
+.gh { font-size: 1.8cqw; color: #000; text-decoration: none; }
+.gh svg { width: 3cqw; height: 3cqw; fill: currentColor; }
+.gh:hover { color: #666; text-decoration: underline; }
